@@ -2,7 +2,7 @@
 // Cached die App-Shell + das MediaPipe Pose-Modell beim ersten Start,
 // damit die App danach auch ohne Internetverbindung funktioniert.
 
-const CACHE_NAME = 'ledernator-bodyscan-v1';
+const CACHE_NAME = 'ledernator-bodyscan-v3';
 
 const APP_SHELL = [
   './',
@@ -47,8 +47,24 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Cache-first: erst lokal schauen, sonst nachladen und für nächstes Mal cachen.
+// Network-first für die App-Shell (index.html etc.): so kommen Updates sofort an,
+// sobald Internet da ist. Nur wenn kein Netz verfügbar ist, wird der Cache genutzt
+// (das sichert die Offline-Fähigkeit weiterhin ab).
 self.addEventListener('fetch', (event) => {
+  const isAppShell = APP_SHELL.some(path => event.request.url.endsWith(path.replace('./','')));
+  if (isAppShell) {
+    event.respondWith(
+      fetch(event.request).then(res => {
+        if (res && res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
+        return res;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+  // Modell-Dateien etc.: weiterhin cache-first (die ändern sich nicht).
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
